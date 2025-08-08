@@ -10,18 +10,13 @@ from telegram.ext import (
     CallbackQueryHandler,
 )
 
-# Load environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_CHAT_ID = int(os.environ.get("CHANNEL_CHAT_ID", 0))
 
 if not BOT_TOKEN or not CHANNEL_CHAT_ID:
-    raise ValueError("Missing BOT_TOKEN or CHANNEL_CHAT_ID in environment variables.")
+    raise ValueError("Missing BOT_TOKEN or CHANNEL_CHAT_ID environment variables.")
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
-
-# Create telegram application and bot
-application = ApplicationBuilder().token(BOT_TOKEN).build()
 
 user_status = {}
 cities = ["Chennai", "Hyderabad", "Kolkata", "Mumbai", "New Delhi"]
@@ -80,11 +75,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_status_keyboard()
         )
 
-# Register handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("ui", ui_command))
-application.add_handler(CallbackQueryHandler(button_handler))
+def main():
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-# Start polling
-if __name__ == "__main__":
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("ui", ui_command))
+    application.add_handler(CallbackQueryHandler(button_handler))
+
     application.run_polling()
+
+if __name__ == "__main__":
+    main()
