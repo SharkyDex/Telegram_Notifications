@@ -2,8 +2,7 @@ import os
 import logging
 from datetime import datetime
 
-from quart import Quart, request, abort
-from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -14,7 +13,6 @@ from telegram.ext import (
 # Load environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_CHAT_ID = int(os.environ.get("CHANNEL_CHAT_ID", 0))
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Set this in Render dashboard
 
 if not BOT_TOKEN or not CHANNEL_CHAT_ID:
     raise ValueError("Missing BOT_TOKEN or CHANNEL_CHAT_ID in environment variables.")
@@ -22,12 +20,8 @@ if not BOT_TOKEN or not CHANNEL_CHAT_ID:
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 
-# Create Quart app
-app = Quart(__name__)
-
 # Create telegram application and bot
 application = ApplicationBuilder().token(BOT_TOKEN).build()
-bot: Bot = application.bot
 
 user_status = {}
 cities = ["Chennai", "Hyderabad", "Kolkata", "Mumbai", "New Delhi"]
@@ -91,62 +85,6 @@ application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("ui", ui_command))
 application.add_handler(CallbackQueryHandler(button_handler))
 
-
-# Webhook receiver route
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
-async def telegram_webhook():
-    try:
-        data = await request.get_json(force=True)
-        update = Update.de_json(data, bot)
-        await application.process_update(update)
-    except Exception as e:
-        logging.error(f"Webhook error: {e}")
-        abort(500)
-    return "OK"
-
-
-# Dynamically set webhook before first request
-async def set_webhook():
-    if RENDER_EXTERNAL_URL:
-        url = RENDER_EXTERNAL_URL
-        if url.startswith("http://"):
-            url = url.replace("http://", "https://", 1)
-        webhook_url = f"{url.rstrip('/')}/{BOT_TOKEN}"
-        await bot.delete_webhook(drop_pending_updates=True)
-        success = await bot.set_webhook(webhook_url)
-        if success:
-            logging.info(f"✅ Webhook set to: {webhook_url}")
-        else:
-            logging.error("❌ Failed to set webhook")
-    else:
-        logging.warning("RENDER_EXTERNAL_URL not set. Webhook not configured.")
-
-
-@app.before_serving
-async def startup():
-    await application.initialize()
-    await application.start()
-    await set_webhook()
-
-
-@app.after_serving
-async def shutdown():
-    await application.stop()
-
-
-# Optional root route to test
-@app.route("/")
-async def index():
-    return "✅ Bot is running!"
-
-# Run the app with hypercorn
+# Start polling
 if __name__ == "__main__":
-    import asyncio
-    import hypercorn.asyncio
-    from hypercorn.config import Config
-
-    port = int(os.environ.get("PORT", 5000))
-    config = Config()
-    config.bind = [f"0.0.0.0:{port}"]
-
-    asyncio.run(hypercorn.asyncio.serve(app, config))
+    application.run_polling()
