@@ -6,34 +6,32 @@ from quart import Quart, request, abort
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
+    ContextTypes,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes,
 )
 
-# Environment
+# Load environment variables
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL_CHAT_ID = int(os.environ.get("CHANNEL_CHAT_ID", 0))
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Added for dynamic webhook
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")  # Set this in Render dashboard
 
 if not BOT_TOKEN or not CHANNEL_CHAT_ID:
     raise ValueError("Missing BOT_TOKEN or CHANNEL_CHAT_ID in environment variables.")
 
-# Logging
+# Setup logging
 logging.basicConfig(level=logging.INFO)
 
-# Quart app
+# Create Quart app
 app = Quart(__name__)
 
-# Telegram Application
+# Create telegram application and bot
 application = ApplicationBuilder().token(BOT_TOKEN).build()
 bot: Bot = application.bot
 
-# In-memory state
 user_status = {}
 cities = ["Chennai", "Hyderabad", "Kolkata", "Mumbai", "New Delhi"]
 
-# UI Keyboards
 def get_status_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Available", callback_data="status_available")],
@@ -45,10 +43,10 @@ def get_city_keyboard():
         [InlineKeyboardButton(city, callback_data=f"city_{city}")] for city in cities
     ])
 
-# Command Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
     await context.bot.send_message(
-        chat_id=update.effective_chat.id,
+        chat_id=chat_id,
         text="Select Slot Status:",
         reply_markup=get_status_keyboard()
     )
@@ -56,7 +54,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ui_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
-# Button Callback Handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -84,26 +81,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message = f"❌ *Slot Not Available* in {city} at {time_str}"
             await context.bot.send_message(chat_id=CHANNEL_CHAT_ID, text=message, parse_mode="Markdown")
 
-        # Reset UI
         await query.edit_message_text(
             text="Select Slot Status:",
             reply_markup=get_status_keyboard()
         )
 
-# Telegram webhook route
+# Register handlers
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("ui", ui_command))
+application.add_handler(CallbackQueryHandler(button_handler))
+
+
+# Webhook receiver route
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 async def telegram_webhook():
     try:
-        data = await request.get_json()
+        data = await request.get_json(force=True)
         update = Update.de_json(data, bot)
         await application.process_update(update)
     except Exception as e:
-        logging.exception(f"Webhook error: {e}")
+        logging.error(f"Webhook error: {e}")
         abort(500)
     return "OK"
 
-# Set webhook at startup
-@app.before_serving
+
+# Dynamically set webhook before first request
 async def set_webhook():
     if RENDER_EXTERNAL_URL:
         url = RENDER_EXTERNAL_URL
@@ -119,17 +121,25 @@ async def set_webhook():
     else:
         logging.warning("RENDER_EXTERNAL_URL not set. Webhook not configured.")
 
-# Health check route
+
+@app.before_serving
+async def startup():
+    await application.initialize()
+    await application.start()
+    await set_webhook()
+
+
+@app.after_serving
+async def shutdown():
+    await application.stop()
+
+
+# Optional root route to test
 @app.route("/")
-async def root():
-    return "✅ Bot is running and webhook is set (if configured)."
+async def index():
+    return "✅ Bot is running!"
 
-# Register handlers
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("ui", ui_command))
-application.add_handler(CallbackQueryHandler(button_handler))
-
-# Start the app with Hypercorn
+# Run the app with hypercorn
 if __name__ == "__main__":
     import asyncio
     import hypercorn.asyncio
