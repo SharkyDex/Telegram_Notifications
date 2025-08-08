@@ -1,4 +1,0 @@
-quart==0.18.2
-werkzeug<2.1.0
-python-telegram-bot==20.3
-hypercorn==0.14.1
