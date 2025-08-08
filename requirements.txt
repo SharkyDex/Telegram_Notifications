@@ -1,0 +1,4 @@
+quart>=0.18.2
+python-telegram-bot[asyncio]>=20.3
+hypercorn>=0.14.0
+
