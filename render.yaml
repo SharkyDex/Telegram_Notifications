@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: telegram-bot
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: BOT_TOKEN
+        value: "<your_bot_token_here>"
+      - key: CHANNEL_CHAT_ID
+        value: "<your_channel_or_group_chat_id_here>"  # integer chat ID
+      - key: PORT
+        value: "5000"
